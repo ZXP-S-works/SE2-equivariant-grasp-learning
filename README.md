@@ -1,4 +1,4 @@
-# SE(2) Equivariant Grasp Learning In Real Time
+# Sample Efficient Grasp Learning Using Equivariant Models
 
 **Abstract**
 
