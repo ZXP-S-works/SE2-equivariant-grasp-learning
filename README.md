@@ -8,24 +8,23 @@ using an equivariant convolutional neural network. As a result, we are able to s
 efficiency of grasp learning, obtaining a good approximation of the grasp function after only 600 grasp attempts. This
 is few enough that we can learn to grasp completely on a physical robot in about 1.5 hours.
 
-[//]: # (<h3>)
+<center>
+<a href="https://arxiv.org/abs/2202.09468">Paper</a> &emsp;&emsp;&emsp;
+<a href="https://zxp-s-works.github.io/equivariant_grasp_site/">Website</a> &emsp;&emsp;&emsp;
+</center>
 
-[//]: # (    <center>)
-
-[//]: # (        <a href="">Paper</a> &emsp;&emsp;&emsp;)
-
-[//]: # (        <a href="">Website</a> &emsp;&emsp;&emsp;)
-
-[//]: # (        <a href="">Video</a>)
-
-[//]: # (    </center>)
-
-[//]: # (</h3>)
 
 **Citation**
 
 ```
-
+@misc{zhu2022sample,
+      title={Sample Efficient Grasp Learning Using Equivariant Models}, 
+      author={Xupeng Zhu and Dian Wang and Ondrej Biza and Guanang Su and Robin Walters and Robert Platt},
+      year={2022},
+      eprint={2202.09468},
+      archivePrefix={arXiv},
+      primaryClass={cs.RO}
+}
 ```
 
 
