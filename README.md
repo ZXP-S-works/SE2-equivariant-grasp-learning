@@ -10,7 +10,6 @@ is few enough that we can learn to grasp completely on a physical robot in about
 
 <center>
 <a href="https://arxiv.org/abs/2202.09468">Paper</a> &emsp;&emsp;&emsp;
-<a href="https://zxp-s-works.github.io/equivariant_grasp_site/">Website</a> &emsp;&emsp;&emsp;
 </center>
 
 
@@ -70,8 +69,8 @@ is few enough that we can learn to grasp completely on a physical robot in about
     ```
 1. Download the git repository and checkout "with_supervised_learning" branch.
     ```
-    git clone https://github.com/ZXP-S-works/asrse3.git -b with_supervised_learning
-    cd asrse3
+    git clone https://github.com/ZXP-S-works/SE2-equivariant-grasp-learning.git
+    cd SE2-equivariant-grasp-learning
     ```
 1. Install [PyTorch](https://pytorch.org/) (Recommended: pytorch==1.8.1, torchvision==0.9.1)
 1. Install [CuPy](https://github.com/cupy/cupy)
