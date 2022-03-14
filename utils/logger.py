@@ -1,20 +1,12 @@
 import os
 import time
 import datetime
-import math
-import numpy as np
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 from collections import namedtuple
 from more_itertools import windowed
 import dill as pickle
 import json
 from tqdm import tqdm
-
-import torch
-import torch.nn.functional as F
-
-from utils.torch_utils import rand_perlin_2d, rand_perlin_2d_octaves
 from utils.parameters import *
 
 # Transition object
@@ -72,7 +64,7 @@ class Logger(object):
         self.steps_left = list()
         self.td_errors = list()
         self.expert_samples = list()
-        self.reward_step = list()  # ZXP the reward's corresponding trianing step
+        self.reward_step = list()
         self.SGD_time = list()
         self.eval_rewards = list()
 
@@ -81,11 +73,8 @@ class Logger(object):
 
     def stepBookkeeping(self, rewards, step_lefts, done_masks):
         self.episode_rewards += rewards.squeeze()
-        if is_bandit:
-            self.num_episodes += len(rewards)
-        else:
-            self.num_episodes += int(np.sum(done_masks))
-        if env_config['reward_type'] in ['dense', 'dense_scene']:
+        self.num_episodes += len(rewards)
+        if env_config['reward_type'] == 'dense':
             self.rewards.extend(rewards)
             self.reward_step.extend(self.num_steps + np.arange(1, num_processes + 1)[rewards.astype(bool)])
         else:
@@ -114,11 +103,11 @@ class Logger(object):
         if not self.rewards:
             return 0.0
         starting = max(starting, len(self.rewards) - n)
-        # if env_config['reward_type'] in ['dense', 'dense_scene']
+        # if env_config['reward_type'] == 'dense':
         #     return np.sum(self.rewards[starting:]) / (self.reward_step[-1] - self.reward_step[-n])
         # else:
         #     return np.sum(self.rewards[starting:]) / n
-        return np.mean(np.asarray(self.rewards[starting:]) > 0.5)
+        return np.mean(self.rewards[starting:])
         # return np.mean(self.rewards[-n:]) if self.rewards else 0.0
 
     def getCurrentLoss(self):
@@ -136,7 +125,7 @@ class Logger(object):
         n = min(n, len(self.rewards))
         fig = plt.figure()
         plt.plot(np.mean(list(windowed(self.rewards, n)), axis=1))
-        if env_config['reward_type'] in ['dense', 'dense_scene']:
+        if env_config['reward_type'] == 'dense':
             scale = 'tries'
         else:
             scale = 'episodes'
@@ -148,8 +137,7 @@ class Logger(object):
     def saveLearningCurve2(self, n=100):
         ''' Plot the rewards over training steps and save to logging dir '''
         n = min(n, len(self.rewards))
-        fig = plt.figure()
-        if env_config['reward_type'] in ['dense', 'dense_scene']:
+        if env_config['reward_type'] == 'dense':
             scale = 'tries'
             plt.plot(np.mean(list(windowed(self.rewards, n)), axis=1))
         else:
@@ -268,7 +256,7 @@ class Logger(object):
         print('saving buffer')
         torch.save(buffer.getSaveState(), os.path.join(self.checkpoint_dir, 'buffer.pt'))
 
-    def loadBuffer(self, buffer, path, max_n=1000000, perlin_c=0):
+    def loadBuffer(self, buffer, path, max_n=1000000):
         print('loading buffer: ' + path)
         load = torch.load(path)
         if not no_bar:
@@ -279,32 +267,8 @@ class Logger(object):
             if i == max_n:
                 break
             t = load['storage'][i]
-            if perlin_c > 0:
-                obs_w_perlin = t.obs[0] + (
-                        perlin_c * rand_perlin_2d((128, 128), (int(np.random.choice([1, 2, 4, 8], 1)[0]),
-                                                               int(np.random.choice([1, 2, 4, 8], 1)[
-                                                                       0]))) + perlin_c)
-                in_hand_w_perlin = t.obs[1] + (perlin_c * rand_perlin_2d((24, 24), (int(np.random.choice([1, 2], 1)[0]),
-                                                                                    int(np.random.choice([1, 2], 1)[
-                                                                                            0]))) + perlin_c)
-                n_obs_w_perlin = t.next_obs[0] + (
-                        perlin_c * rand_perlin_2d((128, 128), (int(np.random.choice([1, 2, 4, 8], 1)[0]),
-                                                               int(np.random.choice([1, 2, 4, 8], 1)[
-                                                                       0]))) + perlin_c)
-                n_in_hand_w_perlin = t.next_obs[1] + (
-                        perlin_c * rand_perlin_2d((24, 24), (int(np.random.choice([1, 2], 1)[0]),
-                                                             int(np.random.choice([1, 2], 1)[0]))) + perlin_c)
-                if in_hand_mode == 'proj':
-                    noisy_obs = (obs_w_perlin, t.obs[1])
-                    noisy_next_obs = (n_obs_w_perlin, t.next_obs[1])
-                else:
-                    noisy_obs = (obs_w_perlin, in_hand_w_perlin)
-                    noisy_next_obs = (n_obs_w_perlin, n_in_hand_w_perlin)
-                t = ExpertTransition(t.state, noisy_obs, t.action, t.reward, t.next_state, noisy_next_obs, t.done,
-                                     t.step_left, t.expert)
-            else:
-                t = ExpertTransition(t.state, t.obs, t.action, t.reward, t.next_state, t.next_obs, t.done, t.step_left,
-                                     t.expert)
+            t = ExpertTransition(t.state, t.obs, t.action, t.reward, t.next_state, t.next_obs, t.done, t.step_left,
+                                 t.expert)
             buffer.add(t)
 
     def saveCheckPoint(self, args, envs, agent, buffer, save_envs=True):
