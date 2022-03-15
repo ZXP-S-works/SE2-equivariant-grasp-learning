@@ -10,6 +10,8 @@ is few enough that we can learn to grasp completely on a physical robot in about
 
 <center>
 <a href="https://arxiv.org/abs/2202.09468">Paper</a> &emsp;&emsp;&emsp;
+<a href="https://zxp-s-works.github.io/equivariant_grasp_site/">Website</a> &emsp;&emsp;&emsp;
+<a href="https://www.youtube.com/watch?v=au59crsgiKw">Video</a>
 </center>
 
 
