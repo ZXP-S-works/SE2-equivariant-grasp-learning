@@ -112,9 +112,9 @@ def train():
 
     # setup the agent
     agent = createAgent()
+    agent.train()
     if load_model_pre:
         agent.loadModel(load_model_pre)
-    agent.train()
 
     # setup logging
     simulator_str = copy.copy(simulator)

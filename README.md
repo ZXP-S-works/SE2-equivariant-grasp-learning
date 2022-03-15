@@ -100,44 +100,22 @@ Our method
 python3 ./scripts/main.py 
 ```
 
-To visualize the simulation and the policy learning, set --render=f.
+To visualize the simulation and the policy learning, set --render=t.
 
-Default parameters:
-```
---env=random_household_picking_clutter_full_obs_30
---num_processes=1
---eval_num_processes=10
---render=f # set it to True to see the actual simulation & training process
---learning_curve_avg_window=50
---training_offset=20
---target_update_freq=20
---q1_failure_td_target=non_action_max_q2
---q1_success_td_target=rewards
---alg=dqn_asr
---model=equ_resu_nodf_flip_softmax
---q2_train_q1=Boltzmann10
---q2_model=equ_shift_reg_7_lq_softmax_last_no_maxpool32
---q2_input=hm_minus_z
---q3_input=hm_minus_z
---patch_size=32 
---batch_size=8
---max_episode=1500
---explore=500
---action_selection=Boltzmann
---hm_threshold=0.005
+To load the trained model and visualize the learned policy:
+```bash
+python3 ./scripts/main.py
+--log_pre="PATH_TO_SAVE_THE_LOG"
 --step_eps=0
---init_eps=0.
---final_eps=0. 
---log_pre=../results/household_repo/rand_household_picking_clutter/ 
---sample_onpolicydata=t 
---onlyfailure=t 
---num_rotations=8 
---aug=0
---onpolicy_data_aug_n=8 
---onpolicy_data_aug_flip=True 
---onpolicy_data_aug_rotate=True 
---num_eval_episodes=1000
+--init_eps=0
+--render=t
+--train_tau=0.002
+--training_offset=10000
+--load_model_pre="PATH_TO_THE_MODEL"
 ```
+Where the ```"PATH_TO_THE_MODEL"``` is the path to the trained model, without ```_qx.pt```. For example 
+```--load_model_pre="/results/household_repo/snapshot_random_household_picking_clutter_full_obs"```.
+
 
 ### Real-time training in a physical robot
 The parallel training is only implemented in physical robot environment. However, one can easily modify it to any environment.
