@@ -61,7 +61,9 @@ is few enough that we can learn to grasp completely on a physical robot in about
 
 ## Installation
 
+You can install the required packages either through `Option1: anaconda` or through `Option2: pip`.
 
+### Option1: anaconda
 1. Install [anaconda](https://docs.conda.io/projects/conda/en/latest/user-guide/install/)
 1. Create and activate a conda virtual environment with python3.7.
     ```
@@ -79,6 +81,31 @@ is few enough that we can learn to grasp completely on a physical robot in about
     ```
     conda install -c conda-forge cupy
     ```
+1. Install other requirement packages
+    ```
+    pip install -r requirements.txt
+    ```
+1. Clone and install the environment repo 
+    ```
+    git clone https://github.com/ColinKohler/helping_hands_rl_envs.git -b xupeng_realistic
+    cd helping_hands_rl_envs
+    pip install -r requirements.txt
+    cd ..
+    ```
+1. Go to the scripts folder of this repo to run experiments
+    ```
+    cd asrse3/scripts
+    ```
+
+### Option2: pip
+1. Install python3.7
+1. Download the git repository and checkout "with_supervised_learning" branch.
+    ```
+    git clone https://github.com/ZXP-S-works/SE2-equivariant-grasp-learning.git
+    cd SE2-equivariant-grasp-learning
+    ```
+1. Install [PyTorch](https://pytorch.org/) (Recommended: pytorch==1.8.1, torchvision==0.9.1)
+1. Install [CuPy](https://github.com/cupy/cupy)
 1. Install other requirement packages
     ```
     pip install -r requirements.txt
@@ -123,7 +150,8 @@ Where the ```"PATH_TO_THE_MODEL"``` is the path to the trained model, without ``
 
 
 ### Real-time training in a physical robot
-The parallel training is only implemented in physical robot environment. However, one can easily modify it to any environment.
+The parallel training is only implemented in physical robot environment (code for physical robot environment is coming 
+soon). However, one can easily modify it to any environment.
 
 ```
 python3 ./scripts/train_robot_parallel.py --env=DualBinFrontRear --hm_threshold=0.015 --step_eps=20 --init_eps=1. --final_eps=0.
