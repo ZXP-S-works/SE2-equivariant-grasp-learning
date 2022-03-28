@@ -76,6 +76,9 @@ is few enough that we can learn to grasp completely on a physical robot in about
     ```
 1. Install [PyTorch](https://pytorch.org/) (Recommended: pytorch==1.8.1, torchvision==0.9.1)
 1. Install [CuPy](https://github.com/cupy/cupy)
+    ```
+    conda install -c conda-forge cupy
+    ```
 1. Install other requirement packages
     ```
     pip install -r requirements.txt
@@ -123,7 +126,7 @@ Where the ```"PATH_TO_THE_MODEL"``` is the path to the trained model, without ``
 The parallel training is only implemented in physical robot environment. However, one can easily modify it to any environment.
 
 ```
-??? python3 ./scripts/train_robot_parallel.py --env=DualBinFrontRear --hm_threshold=0.015 --step_eps=20 --init_eps=1. --final_eps=0.
+python3 ./scripts/train_robot_parallel.py --env=DualBinFrontRear --hm_threshold=0.015 --step_eps=20 --init_eps=1. --final_eps=0.
 ```
 
 <table border="0">
