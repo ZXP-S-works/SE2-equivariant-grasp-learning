@@ -134,7 +134,7 @@ python3 ./scripts/main.py
 
 To visualize the simulation and the policy learning, set --render=t.
 
-To load the trained model and visualize the learned policy:
+To load the trained model and visualize the learned policy, you can run the following code:
 ```bash
 python3 ./scripts/main.py
 --log_pre="PATH_TO_SAVE_THE_LOG"
@@ -144,10 +144,13 @@ python3 ./scripts/main.py
 --train_tau=0.002
 --training_offset=10000
 --load_model_pre="PATH_TO_THE_MODEL"
+--ADITTIONAL_PARAMETERS_FOR_YOUR_MODEL
 ```
 Where the ```"PATH_TO_THE_MODEL"``` is the path to the trained model, without ```_qx.pt```. For example 
 ```--load_model_pre="/results/household_repo/snapshot_random_household_picking_clutter_full_obs"```.
 
+In addition, ```ADITTIONAL_PARAMETERS_FOR_YOUR_MODEL``` should be set correspondingly, for example ```--model, --alg, 
+--action_selection```.
 
 ### Real-time training in a physical robot
 The parallel training is only implemented in physical robot environment (code for physical robot environment is coming 
