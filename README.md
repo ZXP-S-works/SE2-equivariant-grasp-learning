@@ -11,7 +11,7 @@ is few enough that we can learn to grasp completely on a physical robot in about
 
 <h3>
     <center>
-        &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;<a href="https://openreview.net/forum?id=a3NaSCJ20V">Paper</a> &emsp;&emsp;&emsp;
+        <a href="https://openreview.net/forum?id=a3NaSCJ20V">Paper</a> &emsp;&emsp;&emsp;
         <a href="https://zxp-s-works.github.io/equivariant_grasp_site/">Website</a> &emsp;&emsp;&emsp;
         <a href="https://drive.google.com/drive/u/0/folders/1LkS5cjqy69k-FOCAvlagxE1Z9Ff_LyZc">Video</a>
     </center>
@@ -20,7 +20,7 @@ is few enough that we can learn to grasp completely on a physical robot in about
 
 <h3>
     <center>
-        &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;<a href="https://github.com/ZXP-S-works/SE2-equivariant-grasp-learning/tree/main">Minimum Code*</a> &emsp;&emsp;&emsp;
+        <a href="https://github.com/ZXP-S-works/SE2-equivariant-grasp-learning/tree/main">Minimum Code*</a> &emsp;&emsp;&emsp;
         <a href="https://github.com/ZXP-S-works/SE2-equivariant-grasp-learning/tree/complete_code">Complete Code*</a> &emsp;&emsp;&emsp;
     </center>
 </h3>
