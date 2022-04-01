@@ -18,7 +18,7 @@ is few enough that we can learn to grasp completely on a physical robot in about
 
 <h3>
     <center>
-        &emsp;&emsp;&emsp;&emsp;&emsp;&emsp;<a href="https://github.com/ZXP-S-works/SE2-equivariant-grasp-learning/tree/main">Minimum Code*</a> &emsp;&emsp;&emsp;
+        <a href="https://github.com/ZXP-S-works/SE2-equivariant-grasp-learning/tree/main">Minimum Code*</a> &emsp;&emsp;&emsp;
         <a href="https://github.com/ZXP-S-works/SE2-equivariant-grasp-learning/tree/complete_code">Complete Code*</a> &emsp;&emsp;&emsp;
     </center>
 </h3>
