@@ -1,7 +1,8 @@
 import numpy as np
 import torch
 from agents.base_agent import BaseAgent
-from utils.torch_utils import Dilation
+from utils.torch_utils import perturb, ExpertTransition, augmentTransition, Dilation
+import matplotlib.pyplot as plt
 
 
 class Base3D(BaseAgent):
@@ -56,4 +57,10 @@ class Base3D(BaseAgent):
         return pixel
 
     def _loadBatchToDevice(self, batch):
-        super()._loadBatchToDevice(batch)
+        if self.aug > 0:
+            aug_batch = []
+            for _ in range(self.aug):
+                aug_batch += list(augmentTransition(b, self.rzs) for b in batch)
+            super()._loadBatchToDevice(aug_batch)
+        else:
+            super()._loadBatchToDevice(batch)

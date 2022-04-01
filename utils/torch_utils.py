@@ -1,6 +1,8 @@
+import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import math
 is_real_world = False
 if is_real_world:
     import kornia as K
@@ -8,7 +10,9 @@ else:
     import cv2
 import numpy as np
 import collections
+
 from collections import OrderedDict
+
 from utils.parameters import action_sequence, aug_continuous_theta, action_pixel_range, heightmap_size, action_mask, \
     dilation_aperture
 
@@ -171,6 +175,28 @@ def argSoftmax3d(tensor, temperature, num_samples=1):
     return torch.cat(((xy_idex // d).view(-1, 1), (xy_idex % d).view(-1, 1)), dim=1).long(), theta.view(-1, 1).long()
 
 
+# def argmaxTopN2d(tensor, top_n):
+#     '''
+#   Select index randomly from top_n maximum values in a 2d tensor. Probability is proportional to the value.
+#   Args:
+#     - tensor: PyTorch tensor of size (n x 1 x d x d)
+#
+#   Returns: nx2 PyTorch tensor containing indexes of max values
+#   '''
+#     n = tensor.size(0)
+#     d = tensor.size(2)
+#     array = tensor.view(n, -1).numpy()
+#     idx = array.argpartition(-top_n)[:, -top_n:]  # ZXP the top_n idx is NOT sorted
+#     m = []
+#     for i in range(n):
+#         prob = array[i, idx[i]]
+#         prob[prob < 0] = 0
+#         prob = prob / prob.sum(-1)
+#         m.append(np.random.choice(idx[i], p=prob))
+#     m = torch.tensor(m)
+#     return torch.cat(((m // d).view(-1, 1), (m % d).view(-1, 1)), dim=1)
+
+
 def check_patch_not_empty(obs_i, patch_size, pixel, threshold):
     """
     :param obs_i:
@@ -280,6 +306,64 @@ def argmax4d(tensor):
     return torch.cat((d0, d1, d2, d3), dim=1)
 
 
+def softUpdate(target_net, source_net, tau):
+    '''
+  Move target  net to source net a small amount
+
+  Args:
+    - target_net: net to copy weights into
+    - source_net: net to copy weights from
+    - tau: Amount to update weights
+  '''
+    for target_param, source_param in zip(target_net.parameters(), source_net.parameters()):
+        target_param.data.copy_((1 - tau) * target_param.data + tau * source_param.data)
+
+
+def hardUpdate(target_net, source_net):
+    '''
+  Copy all weights from source net to target net
+
+  Args:
+    - target_net: net to copy weights into
+    - source_net: net to copy weights from
+  '''
+    target_net.load_state_dict(source_net.state_dict())
+
+
+def rand_perlin_2d(shape, res, fade=lambda t: 6 * t ** 5 - 15 * t ** 4 + 10 * t ** 3):
+    delta = (res[0] / shape[0], res[1] / shape[1])
+    d = (shape[0] // res[0], shape[1] // res[1])
+
+    grid = torch.stack(torch.meshgrid(torch.arange(0, res[0], delta[0]), torch.arange(0, res[1], delta[1])), dim=-1) % 1
+    angles = 2 * math.pi * torch.rand(res[0] + 1, res[1] + 1)
+    gradients = torch.stack((torch.cos(angles), torch.sin(angles)), dim=-1)
+
+    tile_grads = lambda slice1, slice2: gradients[slice1[0]:slice1[1], slice2[0]:slice2[1]].repeat_interleave(d[0],
+                                                                                                              0).repeat_interleave(
+        d[1], 1)
+    dot = lambda grad, shift: (
+            torch.stack((grid[:shape[0], :shape[1], 0] + shift[0], grid[:shape[0], :shape[1], 1] + shift[1]),
+                        dim=-1) * grad[:shape[0], :shape[1]]).sum(dim=-1)
+
+    n00 = dot(tile_grads([0, -1], [0, -1]), [0, 0])
+    n10 = dot(tile_grads([1, None], [0, -1]), [-1, 0])
+    n01 = dot(tile_grads([0, -1], [1, None]), [0, -1])
+    n11 = dot(tile_grads([1, None], [1, None]), [-1, -1])
+    t = fade(grid[:shape[0], :shape[1]])
+    return math.sqrt(2) * torch.lerp(torch.lerp(n00, n10, t[..., 0]), torch.lerp(n01, n11, t[..., 0]), t[..., 1])
+
+
+def rand_perlin_2d_octaves(shape, res, octaves=1, persistence=0.5):
+    noise = torch.zeros(shape)
+    frequency = 1
+    amplitude = 1
+    for _ in range(octaves):
+        noise += amplitude * rand_perlin_2d(shape, (frequency * res[0], frequency * res[1]))
+        frequency *= 2
+        amplitude *= persistence
+    return noise
+
+
 def bbox(img, threshold=0.01):
     rows = np.any(img > threshold, axis=1)
     cols = np.any(img > threshold, axis=0)
@@ -329,6 +413,75 @@ def get_random_image_transform_params(image_size, theta_dis_n=32, trans_sigma=-1
     return theta, trans, pivot
 
 
+def perturb(current_image, next_image, pixels, set_theta_zero=False, theta_dis_n=32):
+    """Data augmentation on images."""
+    image_size = current_image.shape[:2]
+
+    bbox_current = bbox(current_image)
+    bbox_next = bbox(next_image)
+
+    if np.any(np.array([bbox_current[1] - bbox_current[0], bbox_current[3] - bbox_current[2]]) > image_size[0] - 10):
+        set_theta_zero = True
+
+    pixels.extend([(bbox_current[0], bbox_current[2]),
+                   (bbox_current[0], bbox_current[3]),
+                   (bbox_current[1], bbox_current[2]),
+                   (bbox_current[1], bbox_current[3]),
+                   # (bbox_next[0], bbox_next[2]),
+                   # (bbox_next[0], bbox_next[3]),
+                   # (bbox_next[1], bbox_next[2]),
+                   # (bbox_next[1], bbox_next[3]),
+                   ])
+
+    # Compute random rigid transform.
+    while True:
+        theta, trans, pivot = get_random_image_transform_params(image_size, theta_dis_n)
+        if set_theta_zero:
+            theta = 0.
+        transform = get_image_transform(theta, trans, pivot)
+        transform_params = theta, trans, pivot
+
+        # Ensure pixels remain in the image after transform.
+        is_valid = True
+        new_pixels = []
+        new_rounded_pixels = []
+        for pixel in pixels:
+            pixel = np.float32([pixel[1], pixel[0], 1.]).reshape(3, 1)
+
+            rounded_pixel = np.int32(np.round(transform @ pixel))[:2].squeeze()
+            rounded_pixel = np.flip(rounded_pixel)
+
+            pixel = (transform @ pixel)[:2].squeeze()
+            pixel = np.flip(pixel)
+
+            in_fov_rounded = rounded_pixel[0] < image_size[0] and rounded_pixel[
+                1] < image_size[1]
+            in_fov = pixel[0] < image_size[0] and pixel[1] < image_size[1]
+
+            is_valid = is_valid and np.all(rounded_pixel >= 0) and np.all(
+                pixel >= 0) and in_fov_rounded and in_fov
+
+            new_pixels.append(pixel)
+            new_rounded_pixels.append(rounded_pixel)
+        if is_valid:
+            break
+
+    new_pixels = new_pixels[:-4]
+    new_rounded_pixels = new_rounded_pixels[:-4]
+
+    # Apply rigid transform to image and pixel labels.
+    current_image = cv2.warpAffine(
+        current_image,
+        transform[:2, :], (image_size[1], image_size[0]),
+        flags=cv2.INTER_NEAREST)
+    next_image = cv2.warpAffine(
+        next_image,
+        transform[:2, :], (image_size[1], image_size[0]),
+        flags=cv2.INTER_NEAREST)
+
+    return current_image, next_image, new_pixels, new_rounded_pixels, transform_params
+
+
 def perturbBoundingAction(current_image, next_image, pixels, set_theta_zero=False, theta_dis_n=32):
     """Data augmentation on images."""
     image_size = current_image.shape[:2]
@@ -338,6 +491,7 @@ def perturbBoundingAction(current_image, next_image, pixels, set_theta_zero=Fals
                     np.minimum(nppixels[:, 0] + 5, image_size[0] - action2obs_offset - 1)[0],
                     np.maximum(nppixels[:, 1] - 5, action2obs_offset)[0],
                     np.minimum(nppixels[:, 1] + 5, image_size[1] - action2obs_offset - 1)[0]]
+    # bbox_next = bbox(next_image)
 
     if np.any(np.array([bbox_current[1], bbox_current[0], bbox_current[3], bbox_current[2]])
               > image_size[0] - action2obs_offset - 5) or \
@@ -360,6 +514,8 @@ def perturbBoundingAction(current_image, next_image, pixels, set_theta_zero=Fals
     # Compute random rigid transform.
     while True:
         theta, trans, pivot = get_random_image_transform_params(image_size, theta_dis_n, theta_range=theta_range)
+        # if set_theta_zero:
+        #     theta = 0.
         transform = get_image_transform(theta, trans, pivot)
         transform_params = theta, trans, pivot
 
@@ -376,6 +532,7 @@ def perturbBoundingAction(current_image, next_image, pixels, set_theta_zero=Fals
             pixel = (transform @ pixel)[:2].squeeze()
             pixel = np.flip(pixel)
 
+            # ToDO
             if action_mask == 'square':
                 in_fov_rounded = rounded_pixel[0] < image_size[0] - action2obs_offset and \
                                  rounded_pixel[1] < image_size[0] - action2obs_offset
@@ -419,19 +576,70 @@ def perturbBoundingAction(current_image, next_image, pixels, set_theta_zero=Fals
                 transform[:2, :], (image_size[1], image_size[0]),
                 flags=cv2.INTER_NEAREST)
 
+
     return current_image, next_image, new_pixels, new_rounded_pixels, transform_params
 
 
+def perturbWithTheta(current_image, next_image, pixels, theta):
+    """Data augmentation on images."""
+    image_size = current_image.shape[:2]
+    trans = (0, 0)
+    pivot = (image_size[0] // 2, image_size[1] // 2)
+    transform = get_image_transform(theta, trans, pivot)
+    transform_params = theta, trans, pivot
+
+    # Ensure pixels remain in the image after transform.
+    new_pixels = []
+    new_rounded_pixels = []
+    for pixel in pixels:
+        pixel = np.float32([pixel[1], pixel[0], 1.]).reshape(3, 1)
+
+        rounded_pixel = np.int32(np.round(transform @ pixel))[:2].squeeze()
+        rounded_pixel = np.flip(rounded_pixel)
+
+        pixel = (transform @ pixel)[:2].squeeze()
+        pixel = np.flip(pixel)
+
+        new_pixels.append(pixel)
+        new_rounded_pixels.append(rounded_pixel)
+
+    # Apply rigid transform to image and pixel labels.
+    current_image = cv2.warpAffine(
+        current_image,
+        transform[:2, :], (image_size[1], image_size[0]),
+        flags=cv2.INTER_NEAREST)
+    next_image = cv2.warpAffine(
+        next_image,
+        transform[:2, :], (image_size[1], image_size[0]),
+        flags=cv2.INTER_NEAREST)
+
+    return current_image, next_image, new_pixels, new_rounded_pixels, transform_params
+
+
+def augmentBuffer(buffer, aug_n, rzs):
+    num_rz = len(rzs)
+    aug_list = []
+    for i, d in enumerate(buffer):
+        for _ in range(aug_n):
+            dtheta = rzs[1] - rzs[0]
+            theta_dis_n = int(2 * np.pi / dtheta)
+            obs, next_obs, _, (trans_pixel,), transform_params = perturb(d.obs[0].clone().numpy(),
+                                                                         d.next_obs[0].clone().numpy(),
+                                                                         [d.action[:2].clone().numpy()],
+                                                                         theta_dis_n=theta_dis_n)
+            action_theta = d.action[2].clone()
+            trans_theta, _, _ = transform_params
+            action_theta -= (trans_theta / dtheta).round().long()
+            action_theta %= num_rz
+            trans_action = torch.tensor([trans_pixel[0], trans_pixel[1], action_theta])
+            aug_list.append(
+                ExpertTransition(d.state, (torch.tensor(obs), d.obs[1]), trans_action, d.reward, d.next_state,
+                                 (torch.tensor(next_obs), d.next_obs[1]), d.done, d.step_left, d.expert))
+    for d in aug_list:
+        buffer.add(d)
+
+
 def augmentData2Buffer(buffer, d, rzs, aug_n, rotate, flip):
-    """
-    Augment transition data to buffer
-    :param buffer: buffer
-    :param d: transition data
-    :param rzs: a list of all a_theta value
-    :param aug_n: augmentation times
-    :param rotate: bool, rotate the transition or not
-    :param flip: bool, flip the transition or not
-    """
     num_rz = len(rzs)
     aug_list = []
     dtheta = rzs[1] - rzs[0]
@@ -490,6 +698,154 @@ def augmentData2Buffer(buffer, d, rzs, aug_n, rotate, flip):
 
     for aug_d in aug_list:
         buffer.add(aug_d)
+
+
+def augmentData2BufferD4(buffer, d, rzs):
+    num_rz = len(rzs)
+    aug_list = []
+    for j, rot in enumerate(np.linspace(0, 2 * np.pi, 4, endpoint=False)):
+        dtheta = rzs[1] - rzs[0]
+        obs, next_obs, _, (trans_pixel,), transform_params = perturbWithTheta(d.obs[0].clone().numpy(),
+                                                                              d.next_obs[0].clone().numpy(),
+                                                                              [d.action[:2].clone().numpy()], theta=rot)
+        action_theta = d.action[2].clone()
+        trans_theta, _, _ = transform_params
+        action_theta -= (trans_theta / dtheta).round().long()
+        action_theta %= num_rz
+        trans_action = torch.tensor([trans_pixel[0], trans_pixel[1], action_theta])
+        aug_list.append(ExpertTransition(d.state, (torch.tensor(obs), d.obs[1]), trans_action, d.reward, d.next_state,
+                                         (torch.tensor(next_obs), d.next_obs[1]), d.done, d.step_left, d.expert))
+
+        flipped_obs = np.flip(obs, 0)
+        flipped_next_obs = np.flip(next_obs, 0)
+        flipped_xy = trans_pixel.copy()
+        # flipped_xy[0] = flipped_obs.shape[-1] - 1 - flipped_xy[0]
+        flipped_xy[0] = action_pixel_range - 1 - flipped_xy[0]
+        flipped_theta = action_theta.clone()
+        flipped_theta = (num_rz - flipped_theta) % num_rz
+        # flipped_theta = (-flipped_theta) % num_rz
+        flipped_action = torch.tensor([flipped_xy[0], flipped_xy[1], flipped_theta])
+        aug_list.append(
+            ExpertTransition(d.state, (torch.tensor(flipped_obs.copy()), d.obs[1]), flipped_action, d.reward,
+                             d.next_state,
+                             (torch.tensor(flipped_next_obs.copy()), d.next_obs[1]), d.done, d.step_left, d.expert))
+
+    # augDataSanityCheck(aug_list, num_rz)
+
+    for aug_d in aug_list:
+        buffer.add(aug_d)
+
+
+def getDrQAugmentedTransition(obs, action_idx=None, rzs=(0, np.pi / 2), aug_type='se2'):
+    theta_dis_n = 2 * np.pi // (rzs[1] - rzs[0])
+    if torch.is_tensor(theta_dis_n):
+        theta_dis_n = int(theta_dis_n.item())
+    num_rz = len(rzs)
+    heightmap_size = obs.shape[-1]
+    if aug_type in ['cn', 't', 'se2']:
+        if action_idx is None:
+            pixels = [[0, 0]]
+        else:
+            pixels = [action_idx[:2]]
+        if aug_type == 'cn':
+            set_trans_zero = True
+            set_theta_zero = False
+        elif aug_type == 't':
+            set_trans_zero = False
+            set_theta_zero = True
+        elif aug_type == 'se2':
+            set_trans_zero = False
+            set_theta_zero = False
+        else:
+            raise NotImplementedError
+
+        # obs, next_obs, _, (trans_pixel,), transform_params = \
+        #     perturbBoundingAction(d.obs[0].clone(),
+        #                           d.next_obs[0].clone(),
+        #                           [d.action[:2].clone().numpy()],
+        #                           set_theta_zero=not rotate,
+        #                           theta_dis_n=theta_dis_n)
+        aug_obs, _, _, (trans_pixel,), (trans_theta, _, _) = perturbBoundingAction(obs, None, pixels,
+                                                                                   set_theta_zero=set_theta_zero,
+                                                                                   theta_dis_n=theta_dis_n)
+        if action_idx is not None:
+            action_theta = action_idx[2]
+            action_theta -= (trans_theta / rzs[1] - rzs[0]).round().long()
+            action_theta %= num_rz
+            trans_action = [trans_pixel[0], trans_pixel[1], action_theta]
+        else:
+            trans_action = None
+        return aug_obs, trans_action
+    elif aug_type == 'shift':
+        while True:
+            padded_obs = np.pad(obs, [4, 4], mode='edge')
+            mag_x = np.random.randint(8)
+            mag_y = np.random.randint(8)
+            aug_obs = padded_obs[mag_x:mag_x + heightmap_size, mag_y:mag_y + heightmap_size]
+            if action_idx is None:
+                trans_action = None
+                break
+            else:
+                trans_action = [action_idx[0] - mag_x + 4, action_idx[1] - mag_y + 4, action_idx[2]]
+                if (np.array(trans_action[:2]) > 0).all() and (np.array(trans_action[:2]) < heightmap_size).all():
+                    break
+        return aug_obs, trans_action
+
+
+def augmentTransition(d, rzs, rotate=True, flip=True):
+    num_rz = len(rzs)
+    dtheta = rzs[1] - rzs[0]
+    theta_dis_n = int(2 * np.pi / dtheta)
+    primative_idx, x_idx, y_idx, z_idx, rot_idx = map(lambda a: action_sequence.find(a),
+                                                      ['p', 'x', 'y', 'z', 'r'])
+
+    obs, next_obs, _, (trans_pixel,), transform_params = \
+        perturbBoundingAction(d.obs[0].clone(),
+                              d.next_obs[0].clone(),
+                              [d.action[:2].clone().numpy()],
+                              set_theta_zero=not rotate,
+                              theta_dis_n=theta_dis_n)
+    action_theta = d.action[rot_idx].clone()
+    trans_theta, _, _ = transform_params
+    action_theta -= (trans_theta / dtheta).round().long()
+    action_theta %= num_rz
+
+    if z_idx == -1:
+        trans_action = torch.tensor([trans_pixel[0], trans_pixel[1], action_theta])
+    elif z_idx != -1:
+        trans_action = torch.empty_like(d.action)
+        trans_action[x_idx] = trans_pixel[0].item()
+        trans_action[y_idx] = trans_pixel[1].item()
+        trans_action[z_idx] = d.action[z_idx].clone().item()
+        trans_action[rot_idx] = action_theta.item()
+
+    if flip and np.random.random() > 0.5:
+        flipped_obs = np.flip(obs, 0)
+        flipped_next_obs = np.flip(next_obs, 0)
+        flipped_xy = trans_pixel.copy()
+        # flipped_xy[0] = flipped_obs.shape[-1] - 1 - flipped_xy[0]
+        flipped_xy[0] = action_pixel_range - 1 - flipped_xy[0]
+        flipped_theta = action_theta.clone()
+        flipped_theta = (-flipped_theta) % num_rz
+        flipped_action = torch.tensor([flipped_xy[0], flipped_xy[1], flipped_theta])
+        if z_idx == -1:
+            flipped_action = torch.tensor([flipped_xy[0], flipped_xy[1], flipped_theta])
+        elif z_idx != -1:
+            flipped_action = torch.empty_like(d.action)
+            flipped_action[x_idx] = flipped_xy[0].item()
+            flipped_action[y_idx] = flipped_xy[1].item()
+            flipped_action[z_idx] = d.action[z_idx].clone().item()
+            flipped_action[rot_idx] = flipped_theta.item()
+        aug_d = ExpertTransition(d.state, (torch.tensor(flipped_obs.copy()), d.obs[1]), flipped_action,
+                                 d.reward, d.next_state, (torch.tensor(flipped_next_obs.copy()), d.next_obs[1]),
+                                 d.done, d.step_left, d.expert)
+    else:
+        aug_d = ExpertTransition(d.state, (torch.tensor(obs), d.obs[1]), trans_action, d.reward, d.next_state,
+                                 (torch.tensor(next_obs), d.next_obs[1]), d.done, d.step_left, d.expert)
+
+    # augDataSanityCheck([d], num_rz)
+    # augDataSanityCheck([aug_d], num_rz)
+    return aug_d
 
 
 def augDataSanityCheck(aug_list, num_rz):

@@ -1,3 +1,4 @@
+import torch.nn.functional as F
 from e2cnn import gspaces
 from e2cnn import nn
 from collections import OrderedDict
@@ -297,6 +298,176 @@ class EquResUNet(torch.nn.Module):
         return self.forwardDecoder(feature_map_1, feature_map_2, feature_map_4, feature_map_8, feature_map_16)
 
 
+# shallow resUnet, which has aroung 42^2 reception feild
+class EquResUNet2m(torch.nn.Module):
+    def __init__(self, n_input_channel=1, n_output_channel=16, n_middle_channels=(16, 32, 64, 128), kernel_size=3, N=8,
+                 flip=False, quotient=False, initialize=True):
+        super().__init__()
+        self.N = N
+        self.quotient = quotient
+        if flip:
+            self.r2_act = gspaces.FlipRot2dOnR2(N=N)
+        else:
+            self.r2_act = gspaces.Rot2dOnR2(N=N)
+
+        if quotient:
+            if flip:
+                self.repr = self.r2_act.quotient_repr((None, 2))
+            else:
+                self.repr = self.r2_act.quotient_repr(2)
+        else:
+            self.repr = self.r2_act.regular_repr
+
+        assert len(n_middle_channels) == 4
+        self.l1_c = n_middle_channels[0]
+        self.l2_c = n_middle_channels[1]
+        self.l3_c = n_middle_channels[2]
+        self.l4_c = n_middle_channels[3]
+
+        self.conv_down_1 = torch.nn.Sequential(OrderedDict([
+            ('enc-e2conv-0', nn.R2Conv(nn.FieldType(self.r2_act, n_input_channel * [self.r2_act.trivial_repr]),
+                                       nn.FieldType(self.r2_act, self.l1_c * [self.repr]),
+                                       kernel_size=3, padding=1, initialize=initialize)),
+            ('enc-e2relu-0', nn.ReLU(nn.FieldType(self.r2_act, self.l1_c * [self.repr]))),
+            ('enc-e2res-1',
+             EquiResBlock(self.l1_c, self.l1_c, kernel_size=kernel_size, N=N, flip=flip, quotient=quotient,
+                          initialize=initialize)),
+        ]))
+
+        self.conv_down_2 = torch.nn.Sequential(OrderedDict([
+            ('enc-pool-2', nn.PointwiseMaxPool(nn.FieldType(self.r2_act, self.l1_c * [self.repr]), 2)),
+            ('enc-e2res-2',
+             EquiResBlock(self.l1_c, self.l2_c, kernel_size=kernel_size, N=N, flip=flip, quotient=quotient,
+                          initialize=initialize)),
+        ]))
+        self.conv_down_4 = torch.nn.Sequential(OrderedDict([
+            ('enc-pool-3', nn.PointwiseMaxPool(nn.FieldType(self.r2_act, self.l2_c * [self.repr]), 2)),
+            ('enc-e2res-3',
+             EquiResBlock(self.l2_c, self.l2_c, kernel_size=kernel_size, N=N, flip=flip, quotient=quotient,
+                          initialize=initialize)),
+        ]))
+        self.conv_up_2 = torch.nn.Sequential(OrderedDict([
+            ('dec-e2res-3',
+             EquiResBlock(2 * self.l2_c, self.l1_c, kernel_size=kernel_size, N=N, flip=flip, quotient=quotient,
+                          initialize=initialize)),
+        ]))
+        self.conv_up_1 = torch.nn.Sequential(OrderedDict([
+            ('dec-e2res-4',
+             EquiResBlock(2 * self.l1_c, n_output_channel, kernel_size=kernel_size, N=N, flip=flip, quotient=quotient,
+                          initialize=initialize)),
+        ]))
+
+        self.upsample_4_2 = nn.R2Upsampling(nn.FieldType(self.r2_act, self.l2_c * [self.repr]), 2)
+        self.upsample_2_1 = nn.R2Upsampling(nn.FieldType(self.r2_act, self.l1_c * [self.repr]), 2)
+
+    def forwardEncoder(self, obs):
+        obs_gt = nn.GeometricTensor(obs, nn.FieldType(self.r2_act, obs.shape[1] * [self.r2_act.trivial_repr]))
+        feature_map_1 = self.conv_down_1(obs_gt)
+        feature_map_2 = self.conv_down_2(feature_map_1)
+        feature_map_4 = self.conv_down_4(feature_map_2)
+        return feature_map_1, feature_map_2, feature_map_4
+
+    def forwardDecoder(self, feature_map_1, feature_map_2, feature_map_4):
+        concat_2 = torch.cat((feature_map_2.tensor, self.upsample_4_2(feature_map_4).tensor), dim=1)
+        concat_2 = nn.GeometricTensor(concat_2, nn.FieldType(self.r2_act, 2 * self.l2_c * [self.repr]))
+        feature_map_up_2 = self.conv_up_2(concat_2)
+
+        concat_1 = torch.cat((feature_map_1.tensor, self.upsample_2_1(feature_map_up_2).tensor), dim=1)
+        concat_1 = nn.GeometricTensor(concat_1, nn.FieldType(self.r2_act, 2 * self.l1_c * [self.repr]))
+        feature_map_up_1 = self.conv_up_1(concat_1)
+        return feature_map_up_1
+
+    def forward(self, obs):
+        feature_map_1, feature_map_2, feature_map_4 = self.forwardEncoder(obs)
+        return self.forwardDecoder(feature_map_1, feature_map_2, feature_map_4)
+
+
+# large shallow resUnet, which has aroung 42^2 reception feild
+class EquResUNet2ml(torch.nn.Module):
+    def __init__(self, n_input_channel=1, n_output_channel=16, n_middle_channels=(32, 64, 64, 128), kernel_size=3, N=8,
+                 flip=False, quotient=False, initialize=True):
+        super().__init__()
+        # initialize=False #ToDo
+        self.N = N
+        self.quotient = quotient
+        if flip:
+            self.r2_act = gspaces.FlipRot2dOnR2(N=N)
+        else:
+            self.r2_act = gspaces.Rot2dOnR2(N=N)
+
+        if quotient:
+            if flip:
+                self.repr = self.r2_act.quotient_repr((None, 2))
+            else:
+                self.repr = self.r2_act.quotient_repr(2)
+        else:
+            self.repr = self.r2_act.regular_repr
+
+        assert len(n_middle_channels) == 4
+        self.l1_c = n_middle_channels[0]
+        self.l2_c = n_middle_channels[1]
+        self.l3_c = n_middle_channels[2]
+        self.l4_c = n_middle_channels[3]
+
+        self.conv_down_1 = torch.nn.Sequential(OrderedDict([
+            ('enc-e2conv-0', nn.R2Conv(nn.FieldType(self.r2_act, n_input_channel * [self.r2_act.trivial_repr]),
+                                       nn.FieldType(self.r2_act, self.l1_c * [self.repr]),
+                                       kernel_size=3, padding=1, initialize=initialize)),
+            ('enc-e2relu-0', nn.ReLU(nn.FieldType(self.r2_act, self.l1_c * [self.repr]))),
+            ('enc-e2res-1',
+             EquiResBlock(self.l1_c, self.l1_c, kernel_size=kernel_size, N=N, flip=flip, quotient=quotient,
+                          initialize=initialize)),
+        ]))
+
+        self.conv_down_2 = torch.nn.Sequential(OrderedDict([
+            ('enc-pool-2', nn.PointwiseMaxPool(nn.FieldType(self.r2_act, self.l1_c * [self.repr]), 2)),
+            ('enc-e2res-2',
+             EquiResBlock(self.l1_c, self.l2_c, kernel_size=kernel_size, N=N, flip=flip, quotient=quotient,
+                          initialize=initialize)),
+        ]))
+        self.conv_down_4 = torch.nn.Sequential(OrderedDict([
+            ('enc-pool-3', nn.PointwiseMaxPool(nn.FieldType(self.r2_act, self.l2_c * [self.repr]), 2)),
+            ('enc-e2res-3',
+             EquiResBlock(self.l2_c, self.l2_c, kernel_size=kernel_size, N=N, flip=flip, quotient=quotient,
+                          initialize=initialize)),
+        ]))
+        self.conv_up_2 = torch.nn.Sequential(OrderedDict([
+            ('dec-e2res-3',
+             EquiResBlock(2 * self.l2_c, self.l1_c, kernel_size=kernel_size, N=N, flip=flip, quotient=quotient,
+                          initialize=initialize)),
+        ]))
+        self.conv_up_1 = torch.nn.Sequential(OrderedDict([
+            ('dec-e2res-4',
+             EquiResBlock(2 * self.l1_c, n_output_channel, kernel_size=kernel_size, N=N, flip=flip, quotient=quotient,
+                          initialize=initialize)),
+        ]))
+
+        self.upsample_4_2 = nn.R2Upsampling(nn.FieldType(self.r2_act, self.l2_c * [self.repr]), 2)
+        self.upsample_2_1 = nn.R2Upsampling(nn.FieldType(self.r2_act, self.l1_c * [self.repr]), 2)
+
+    def forwardEncoder(self, obs):
+        obs_gt = nn.GeometricTensor(obs, nn.FieldType(self.r2_act, obs.shape[1] * [self.r2_act.trivial_repr]))
+        feature_map_1 = self.conv_down_1(obs_gt)
+        feature_map_2 = self.conv_down_2(feature_map_1)
+        feature_map_4 = self.conv_down_4(feature_map_2)
+        return feature_map_1, feature_map_2, feature_map_4
+
+    def forwardDecoder(self, feature_map_1, feature_map_2, feature_map_4):
+        concat_2 = torch.cat((feature_map_2.tensor, self.upsample_4_2(feature_map_4).tensor), dim=1)
+        concat_2 = nn.GeometricTensor(concat_2, nn.FieldType(self.r2_act, 2 * self.l2_c * [self.repr]))
+        feature_map_up_2 = self.conv_up_2(concat_2)
+
+        concat_1 = torch.cat((feature_map_1.tensor, self.upsample_2_1(feature_map_up_2).tensor), dim=1)
+        concat_1 = nn.GeometricTensor(concat_1, nn.FieldType(self.r2_act, 2 * self.l1_c * [self.repr]))
+        feature_map_up_1 = self.conv_up_1(concat_1)
+        return feature_map_up_1
+
+    def forward(self, obs):
+        feature_map_1, feature_map_2, feature_map_4 = self.forwardEncoder(obs)
+        return self.forwardDecoder(feature_map_1, feature_map_2, feature_map_4)
+
+
+# no dynamic filter
 class EquResUReg(torch.nn.Module):
     def __init__(self, n_input_channel=1, n_primitives=1, patch_shape=(1, 24, 24), domain_shape=(1, 128, 128), N=8,
                  df_channel=16, n_middle_channels=(16, 32, 64, 128), kernel_size=3, flip=False, quotient=False,
@@ -367,6 +538,241 @@ class EquResUReg(torch.nn.Module):
         return out, 0
 
 
+# 2 maxpool u net
+class EquResU2MReg(torch.nn.Module):
+    def __init__(self, n_input_channel=1, n_primitives=1, patch_shape=(1, 24, 24), domain_shape=(1, 128, 128), N=8,
+                 df_channel=16, n_middle_channels=(16, 32, 64, 128), kernel_size=3, flip=False, quotient=False,
+                 initialize=True, last_activation_softmax=False):
+        assert n_primitives == 2
+        super().__init__()
+        self.last_activation_softmax = last_activation_softmax
+        self.N = N
+        if flip:
+            self.r2_act = gspaces.FlipRot2dOnR2(N=N)
+        else:
+            self.r2_act = gspaces.Rot2dOnR2(N=N)
+
+        if quotient:
+            if flip:
+                self.repr = self.r2_act.quotient_repr((None, 2))  # ZXP ???
+            else:
+                self.repr = self.r2_act.quotient_repr(2)
+        else:
+            self.repr = self.r2_act.regular_repr  # ZXP ???
+
+        self.df_channel = df_channel
+
+        # the main unet path
+        self.unet = EquResUNet2m(n_input_channel=n_input_channel, n_output_channel=self.df_channel,
+                                 n_middle_channels=n_middle_channels,
+                                 kernel_size=kernel_size, N=N, flip=flip, quotient=quotient, initialize=initialize)
+
+        if last_activation_softmax:
+            self.pick_q_values = torch.nn.Sequential(
+                conv2d(self.df_channel, self.df_channel, kernel_size=3, stride=1, N=N, last=True, flip=flip,
+                       quotient=quotient, initialize=initialize),
+                nn.R2Conv(nn.FieldType(self.r2_act, self.df_channel * [self.r2_act.trivial_repr]),
+                          nn.FieldType(self.r2_act, 2 * [self.r2_act.trivial_repr]), kernel_size=1,
+                          initialize=initialize)
+            )
+            self.softmax = torch.nn.Softmax(dim=1)
+        else:
+            self.pick_q_values = torch.nn.Sequential(
+                conv2d(self.df_channel, self.df_channel, kernel_size=3, stride=1, N=N, last=True, flip=flip,
+                       quotient=quotient, initialize=initialize),
+                nn.R2Conv(nn.FieldType(self.r2_act, self.df_channel * [self.r2_act.trivial_repr]),
+                          nn.FieldType(self.r2_act, 1 * [self.r2_act.trivial_repr]), kernel_size=1,
+                          initialize=initialize)
+            )
+
+    def forward(self, obs, in_hand):
+        feature_map_up_1 = self.unet.forward(obs)
+
+        if self.last_activation_softmax:
+            pick_q_values = self.pick_q_values(feature_map_up_1).tensor.reshape(obs.size(0), 2, -1)
+            pick_q_values = self.softmax(pick_q_values)[:, 1, :]
+            pick_q_values = pick_q_values.reshape(obs.shape[0], 1, obs.shape[2], obs.shape[3])
+        else:
+            pick_q_values = self.pick_q_values(feature_map_up_1).tensor
+        place_q_values = pick_q_values
+
+        out = torch.cat((pick_q_values, place_q_values), dim=1)
+        return out, 0
+
+
+# 2 maxpool u net large
+class EquResU2MLReg(torch.nn.Module):
+    def __init__(self, n_input_channel=1, n_primitives=1, patch_shape=(1, 24, 24), domain_shape=(1, 128, 128), N=8,
+                 df_channel=16, n_middle_channels=(32, 64, 128, 128), kernel_size=3, flip=False, quotient=False,
+                 initialize=True, last_activation_softmax=False):
+        assert n_primitives == 2
+        super().__init__()
+        self.last_activation_softmax = last_activation_softmax
+        self.N = N
+        if flip:
+            self.r2_act = gspaces.FlipRot2dOnR2(N=N)
+        else:
+            self.r2_act = gspaces.Rot2dOnR2(N=N)
+
+        if quotient:
+            if flip:
+                self.repr = self.r2_act.quotient_repr((None, 2))  # ZXP ???
+            else:
+                self.repr = self.r2_act.quotient_repr(2)
+        else:
+            self.repr = self.r2_act.regular_repr  # ZXP ???
+
+        self.df_channel = df_channel
+
+        # the main unet path
+        self.unet = EquResUNet2ml(n_input_channel=n_input_channel, n_output_channel=self.df_channel,
+                                  n_middle_channels=n_middle_channels,
+                                  kernel_size=kernel_size, N=N, flip=flip, quotient=quotient, initialize=initialize)
+
+        if last_activation_softmax:
+            self.pick_q_values = torch.nn.Sequential(
+                conv2d(self.df_channel, self.df_channel, kernel_size=3, stride=1, N=N, last=True, flip=flip,
+                       quotient=quotient, initialize=initialize),
+                nn.R2Conv(nn.FieldType(self.r2_act, self.df_channel * [self.r2_act.trivial_repr]),
+                          nn.FieldType(self.r2_act, 2 * [self.r2_act.trivial_repr]), kernel_size=1,
+                          initialize=initialize)
+            )
+            self.softmax = torch.nn.Softmax(dim=1)
+        else:
+            self.pick_q_values = torch.nn.Sequential(
+                conv2d(self.df_channel, self.df_channel, kernel_size=3, stride=1, N=N, last=True, flip=flip,
+                       quotient=quotient, initialize=initialize),
+                nn.R2Conv(nn.FieldType(self.r2_act, self.df_channel * [self.r2_act.trivial_repr]),
+                          nn.FieldType(self.r2_act, 1 * [self.r2_act.trivial_repr]), kernel_size=1,
+                          initialize=initialize)
+            )
+
+    def forward(self, obs, in_hand):
+        feature_map_up_1 = self.unet.forward(obs)
+
+        if self.last_activation_softmax:
+            pick_q_values = self.pick_q_values(feature_map_up_1).tensor.reshape(obs.size(0), 2, -1)
+            pick_q_values = self.softmax(pick_q_values)[:, 1, :]
+            pick_q_values = pick_q_values.reshape(obs.shape[0], 1, obs.shape[2], obs.shape[3])
+        else:
+            pick_q_values = self.pick_q_values(feature_map_up_1).tensor
+        # place_q_values = self.place_q_values(place_feature)
+        place_q_values = pick_q_values
+
+        out = torch.cat((pick_q_values, place_q_values), dim=1)
+        return out, 0
+
+
+class EquShiftQ23(torch.nn.Module):
+    def __init__(self, image_shape, n_rotations, n_primitives, kernel_size=3, df_channel=16, n_hidden=128,
+                 quotient=True, last_quotient=False, out_type='index', initialize=True,
+                 last_activation_softmax=True, q2_type='convolution'):
+        super().__init__()
+        assert out_type in ['index', 'sum']
+        if last_quotient:
+            assert not quotient
+        self.n_rotations = n_rotations
+        self.n_primitives = n_primitives
+        self.N = n_rotations * 2
+        self.r2_act = gspaces.Rot2dOnR2(N=self.N)
+        self.quotient = quotient
+        self.out_type = out_type
+        self.last_activation_softmax = last_activation_softmax
+        if quotient:
+            self.repr = self.r2_act.quotient_repr(2)
+            n_weight = 0.5
+        else:
+            self.repr = self.r2_act.regular_repr
+            n_weight = 1
+        self.df_channel = df_channel
+
+        if q2_type == 'convolution':
+            self.patch_conv = torch.nn.Sequential(
+                EquCNNEnc(image_shape[0] - 1, n_hidden, self.N, kernel_size=kernel_size, out_size=8, quotient=quotient,
+                          initialize=initialize),
+                nn.R2Conv(nn.FieldType(self.r2_act, n_hidden * [self.repr]),
+                          nn.FieldType(self.r2_act, df_channel * 2 * [self.repr]),
+                          kernel_size=3, initialize=initialize),
+                nn.ReLU(nn.FieldType(self.r2_act, df_channel * 2 * [self.repr])),
+                nn.PointwiseMaxPool(nn.FieldType(self.r2_act, df_channel * 2 * [self.repr]), 2),
+                nn.R2Conv(nn.FieldType(self.r2_act, df_channel * 2 * [self.repr]),
+                          nn.FieldType(self.r2_act, df_channel * [self.repr]),
+                          kernel_size=3, initialize=initialize),
+                nn.ReLU(nn.FieldType(self.r2_act, df_channel * [self.repr])),
+            )
+        elif q2_type == 'convolution_last_no_maxpool':
+            self.patch_conv = torch.nn.Sequential(
+                EquCNNEnc(image_shape[0] - 1, n_hidden, self.N, kernel_size=kernel_size, out_size=8, quotient=quotient,
+                          initialize=initialize),
+                nn.R2Conv(nn.FieldType(self.r2_act, n_hidden * [self.repr]),
+                          nn.FieldType(self.r2_act, df_channel * 2 * [self.repr]),
+                          kernel_size=4, initialize=initialize),
+                nn.ReLU(nn.FieldType(self.r2_act, df_channel * 2 * [self.repr])),
+                nn.R2Conv(nn.FieldType(self.r2_act, df_channel * 2 * [self.repr]),
+                          nn.FieldType(self.r2_act, df_channel * [self.repr]),
+                          kernel_size=5, initialize=initialize),
+                nn.ReLU(nn.FieldType(self.r2_act, df_channel * [self.repr])),
+            )
+
+        if last_quotient:
+            output_repr = n_primitives * [self.r2_act.quotient_repr(2)]
+        else:
+            output_repr = n_primitives * [self.repr]
+        if args.q2_predict_width:
+            self.conv_21 = torch.nn.Sequential(
+                nn.R2Conv(nn.FieldType(self.r2_act, self.df_channel * [self.repr]),
+                          nn.FieldType(self.r2_act, 2 * output_repr),
+                          kernel_size=1, initialize=initialize)
+            )
+            self.softmax1 = torch.nn.Softmax(dim=1)
+            self.conv_22 = torch.nn.Sequential(
+                nn.R2Conv(nn.FieldType(self.r2_act, self.df_channel * [self.repr]),
+                          nn.FieldType(self.r2_act, 2 * output_repr),
+                          kernel_size=1, initialize=initialize)
+            )
+            self.softmax2 = torch.nn.Softmax(dim=1)
+        elif last_activation_softmax:
+            self.conv_2 = torch.nn.Sequential(
+                nn.R2Conv(nn.FieldType(self.r2_act, self.df_channel * [self.repr]),
+                          nn.FieldType(self.r2_act, 2 * output_repr),
+                          kernel_size=1, initialize=initialize)
+            )
+            self.softmax = torch.nn.Softmax(dim=1)
+        else:
+            self.conv_2 = torch.nn.Sequential(
+                nn.R2Conv(nn.FieldType(self.r2_act, self.df_channel * [self.repr]),
+                          nn.FieldType(self.r2_act, output_repr),
+                          kernel_size=1, initialize=initialize)
+            )
+
+    def forward(self, obs_encoding, patch):
+        batch_size = patch.size(0)
+        patch_channel = patch.shape[1]
+        image_patch = patch[:, :-1]
+        image_patch = nn.GeometricTensor(image_patch,
+                                         nn.FieldType(self.r2_act, image_patch.shape[1] * [self.r2_act.trivial_repr]))
+
+        patch_conv_out = self.patch_conv(image_patch)
+
+        if args.q2_predict_width:
+            x1 = self.conv_21(patch_conv_out).tensor
+            x1 = x1.reshape(batch_size, 2, self.n_primitives, -1)
+            x1 = self.softmax1(x1)[:, 1, :]
+            x1 = x1.reshape(batch_size, self.n_primitives, -1)
+            x2 = self.conv_22(patch_conv_out).tensor
+            x2 = x2.reshape(batch_size, 2, self.n_primitives, -1)
+            x2 = self.softmax2(x2)[:, 1, :]
+            x2 = x2.reshape(batch_size, self.n_primitives, -1)
+            return x1, x2
+        elif self.last_activation_softmax:
+            x = self.conv_2(patch_conv_out).tensor
+            x = x.reshape(batch_size, 2, self.n_primitives, -1)
+            x = self.softmax(x)[:, 1, :]
+            x = x.reshape(batch_size, self.n_primitives, -1)
+            return x
+
+
+# no dynamic filter, resnet
 class EquShiftQ2ResN(torch.nn.Module):
     def __init__(self, image_shape, n_rotations, n_primitives, kernel_size=3, df_channel=16, n_hidden=64,
                  quotient=True, last_quotient=False, out_type='index', initialize=True,

@@ -1,9 +1,18 @@
+import os
+import sys
 import time
+import copy
+import math
 import collections
+
+import numpy as np
 import rospy
+import torch
+
 import matplotlib.pyplot as plt
 from src.envs.dual_bin_front_rear import DualBinFrontRear
 from tqdm import tqdm
+
 from utils.parameters import *
 from scripts.create_agent import createAgent
 from utils.visualization_utils import plot_action
@@ -25,7 +34,7 @@ if __name__ == '__main__':
     agent = createAgent()
     agent.train()
     agent.loadModel(load_model_pre)
-    agent.eval()
+    # agent.eval()
 
     if not no_bar:
         pbar = tqdm(total=max_episode)
@@ -41,6 +50,11 @@ if __name__ == '__main__':
     rewards = 1
     for step in range(max_episode):
         j += 1
+        # obs, in_hand = env.getObs(pre_action)
+        # addPerlinNoiseToObs(obs, 0.005)
+        # addPerlinNoiseToInHand(in_hand, 0.005)
+        # state = torch.tensor([env.ur5.holding_state], dtype=torch.float32)
+        # q_map, action_idx, action = agent.getEGreedyActions(state, in_hand, obs, 0, 0)
         test_temp = test_tau if rewards else test_temp + train_tau
         q_value_maps, actions_star_idx, actions_star, in_hand_obs = \
             agent.getBoltzmannActions(states, in_hands, obs, test_temp, return_patch=True)
@@ -64,6 +78,9 @@ if __name__ == '__main__':
             pbar.set_description(description)
             timer_start = timer_final
             pbar.update(1)
+
+        # if step % 10 == 9:
+        #     print('test success rate: {:.2f} over {} grasps'.format(reward_hist.mean(), step + 1))
 
     env.close()
     print('test success rate: {:.2f} over {} grasps'.format(reward_hist.mean(), max_episode))

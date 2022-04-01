@@ -1,15 +1,14 @@
+import logging
 import threading
 
 SENTINEL = object()
 
 
 class Pipe:
-    """
-    Consumer-producer pipe.
-    Only one variable allowed.
-    """
     def __init__(self, name):
         """
+        Consumer-producer pipe.
+        Only one variable allowed.
         :param name: the name of the variable
         """
         self.name = name

@@ -1,4 +1,5 @@
 import itertools
+import os
 import numpy as np
 from scipy import stats
 import matplotlib.pyplot as plt
@@ -6,6 +7,7 @@ import os
 
 use_default_cm = False
 
+# colors = "bgrycmkwbgrycmkw"
 colors = ('blue', 'orange', 'green', 'red', 'cyan',
           'brown', 'pink', 'olive', 'gray', 'purple',
           'tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple',
@@ -15,6 +17,32 @@ if use_default_cm:
 else:
     color_map = {
         'ours ': 'blue',
+        'FC-GQ-CNN': 'orange',
+        'FC-GQ-CNN ': 'orange',
+        '8x RAD FC-GQ-CNN': 'red',
+        '4x RAD FC-GQ-CNN': 'green',
+        '2x RAD FC-GQ-CNN': 'purple',
+        '8x RAD VPG': 'green',
+        '4x RAD VPG': 'red',
+        '2x RAD VPG': 'orange',
+        '16 soft equ FC-GQ-CNN': 'brown',
+        '16x soft equ FC-GQ-CNN': 'brown',
+        '8x soft equ FC-GQ-CNN': 'red',
+        '4x soft equ FC-GQ-CNN': 'green',
+        '2x soft equ FC-GQ-CNN': 'purple',
+        '8x soft equ VPG': 'red',
+        '4x soft equ VPG': 'orange',
+        '2x soft equ VPG': 'green',
+        'VPG': 'purple',
+        'VPG ': 'purple',
+        'no opt': 'red',
+        '8x RAD rot FCN': 'red',
+        'rot equ': 'green',
+        '4x RAD rot FCN': 'orange',
+        '2x RAD rot FCN': 'purple',
+        'rot FCN': 'brown',
+        'no ASR': 'orange',
+        'no equ': 'purple',
     }
 
 linestyle_map = {
@@ -25,10 +53,38 @@ name_map = {
 
 sequence = {
         'ours ': 1,
+        '8x RAD FC-GQ-CNN': 2.1,
+        '4x RAD FC-GQ-CNN': 2.2,
+        '2x RAD FC-GQ-CNN': 2.3,
+        '8x RAD VPG': 3.1,
+        '4x RAD VPG': 3.2,
+        '2x RAD VPG': 3.3,
+        '16x soft equ FC-GQ-CNN': 4.1,
+        '8x soft equ FC-GQ-CNN': 4.2,
+        '4x soft equ FC-GQ-CNN': 4.3,
+        '2x soft equ FC-GQ-CNN': 4.4,
+        '8x soft equ VPG': 5.1,
+        '4x soft equ VPG': 5.2,
+        '2x soft equ VPG': 5.3,
+        'FC-GQ-CNN': 6,
+        'VPG': 7,
+        'no opt': 8,
+        '8x RAD rot FCN': 9,
+        'rot equ': 9.1,
+        '4x RAD rot FCN': 9.2,
+        '2x RAD rot FCN': 9.3,
+        'rot FCN': 9.4,
+        'no ASR': 10,
+        'no equ': 11,
 }
 
 
 def getRewardsSingle(rewards, window=1000):
+    moving_avg = []
+    i = window
+    # while i - window < len(rewards):
+    #     moving_avg.append(np.average(rewards[i - window:i]))
+    #     i += window
     multi_window_len = (len(rewards) // window) * window
     rewards = np.array(rewards[:multi_window_len])
     moving_avg = rewards.reshape(-1, window).mean(1)
@@ -45,6 +101,7 @@ def plotLearningCurveAvg(rewards, window=1000, label='reward', color='b', shadow
         rewards = np.array(list(itertools.zip_longest(*rewards, fillvalue=0))).T
         rewards = rewards[:, :min_len]
     avg_rewards = np.mean(rewards, axis=0)
+    # std_rewards = np.std(rewards, axis=0)
     std_rewards = stats.sem(rewards, axis=0)
     xs = np.arange(window, window * avg_rewards.shape[0] + 1, window)
     if shadow:
@@ -89,9 +146,6 @@ def get_immediate_subdirectories(a_dir):
 
 
 def plotLearningCurve(base, ep=50000, use_default_cm=False, filer_pass_word='_', figname='plot.png'):
-    """
-    Plot learning average learning curve
-    """
     plt.style.use('ggplot')
     plt.figure(dpi=300)
     MEDIUM_SIZE = 12
@@ -141,10 +195,7 @@ def plotLearningCurve(base, ep=50000, use_default_cm=False, filer_pass_word='_',
     plt.savefig(os.path.join(base, figname), bbox_inches='tight', pad_inches=0)
 
 
-def plotEvalCurve(base, ep=50000, use_default_cm=False, filer_pass_word='_', figname='plot.png'):
-    """
-    Plot evaluation curve
-    """
+def plotEvalCurve1(base, ep=50000, use_default_cm=False, filer_pass_word='_', figname='plot.png'):
     plt.style.use('ggplot')
     fig = plt.figure(dpi=300)
 
@@ -221,6 +272,55 @@ def plotEvalCurve(base, ep=50000, use_default_cm=False, filer_pass_word='_', fig
     plt.savefig(os.path.join(base, figname + ' validation1'), bbox_inches='tight', pad_inches=0)
 
 
+def plotEvalCurve2(base, ep=50000, use_default_cm=False, filer_pass_word='_', figname='plot.png'):
+    plt.style.use('ggplot')
+
+    plt.figure(dpi=300)
+    MEDIUM_SIZE = 12
+    BIGGER_SIZE = 14
+    LEGEND_SIZE = 14
+
+    plt.rc('axes', titlesize=BIGGER_SIZE)  # fontsize of the axes title
+    plt.rc('axes', labelsize=BIGGER_SIZE)  # fontsize of the x and y labels
+    plt.rc('xtick', labelsize=MEDIUM_SIZE)  # fontsize of the tick labels
+    plt.rc('ytick', labelsize=MEDIUM_SIZE)  # fontsize of the tick labels
+
+    i = 0
+    methods = filter(lambda x: (x[0] != '.' and x.find(filer_pass_word) >= 0), get_immediate_subdirectories(base))
+    # methods = filter(lambda x: (x[0] != '.'), get_immediate_subdirectories(base))
+    for method in sorted(methods, key=lambda x: str(sequence[x]) if x in sequence.keys() else x):
+        rs = []
+        for j, run in enumerate(get_immediate_subdirectories(os.path.join(base, method))):
+            try:
+                r = np.load(os.path.join(base, method, run, 'info/eval_rewards.npy'))
+                if method.find('_BC_') >= 0:
+                    rs.append(r)
+                else:
+                    rs.append(r[:min(ep, len(r))])
+            except Exception as e:
+                continue
+
+        # plot_cut = 150 * 5
+        method_shot = method[:method.find('_pybullet')] if method.find('_pybullet') != -1 else method
+        plotLearningCurveAvg(rs, WINDOW, label=name_map[method_shot]
+        if method_shot in name_map else method_shot,
+                             color=color_map[method] if method in color_map else colors[i],
+                             linestyle=linestyle_map[method] if method in linestyle_map else '-',
+                             show_success_rate=True)
+        i += 1
+
+    # plt.plot([0, ep], [RANDOM, RANDOM], color='k', label='random')
+    plt.legend(loc=4, facecolor='w', fontsize=LEGEND_SIZE, framealpha=0.6)
+    # plt.xlabel('number of grasps')
+    # plt.ylabel('success rate per ' + str(WINDOW) + ' grasps')
+    plt.xlabel('number of grasps')
+    plt.ylabel('validation success rate over ' + str(1000) + ' grasps')
+    plt.ylim(0, 1)
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(base, figname + ' validation2'), bbox_inches='tight', pad_inches=0)
+
+
 def showPerformance(base, filer_pass_word='_'):
     # methods = sorted(filter(lambda x: x[0] != '.', get_immediate_subdirectories(base)))
     methods = filter(lambda x: (x[0] != '.' and x.find(filer_pass_word) >= 0), get_immediate_subdirectories(base))
@@ -235,12 +335,73 @@ def showPerformance(base, filer_pass_word='_'):
         print('{}: {:.3f}'.format(method, np.mean(rs)))
 
 
+def plotTDErrors():
+    plt.style.use('ggplot')
+    colors = "bgrycmkw"
+    method_map = {
+        'ADET': 'm',
+        'ADET+Q*': 'g',
+        'DAGGER': 'k',
+        'DQN': 'c',
+        'DQN+guided': 'y',
+        'DQN+Q*': 'b',
+        'DQN+Q*+guided': 'r',
+        "DQfD": 'chocolate',
+        "DQfD+Q*": 'grey'
+    }
+    i = 0
+
+    base = '/media/dian/hdd/unet/perlin'
+    for method in sorted(get_immediate_subdirectories(base)):
+        rs = []
+        if method[0] == '.' or method == 'DAGGER' or method == 'DQN':
+            continue
+        for j, run in enumerate(get_immediate_subdirectories(os.path.join(base, method))):
+            try:
+                r = np.load(os.path.join(base, method, run, 'info/td_errors.npy'))
+                rs.append(getRewardsSingle(r[:120000], window=1000))
+            except Exception as e:
+                continue
+        if method in method_map:
+            plotLearningCurveAvg(rs, 1000, label=method, color=method_map[method])
+        else:
+            plotLearningCurveAvg(rs, 1000, label=method, color=colors[i])
+        # plotLearningCurveAvg(rs, 1000, label=method, color=colors[i])
+        i += 1
+
+    plt.legend(loc=0)
+    plt.xlabel('number of training steps')
+    plt.ylabel('TD error')
+    plt.yscale('log')
+    # plt.ylim((0.8, 0.93))
+    plt.show()
+
+
 if __name__ == '__main__':
     WINDOW = 150
+    # WINDOW = 60
     FREQ = int(1500 / 10)
-    RANDOM = 0
-    folder = ''
-    base = '' + folder
+    RANDOM = 0.185
+    # folder = 'compare with baselines'
+    # folder = 'compare with all baselines'
+    # folder = 'dilation aperture'
+    # folder = 'ablation I'
+    # folder = 'n soft FC-GQ-CNN'
+    # folder = 'n soft VPG'
+    # folder = 'n RAD FC-GQ-CNN'
+    # folder = 'n RAD VPG'
+    # folder = 'FC-GQ-CNN'
+    # folder = 'VPG'
+    # folder = 'n RAD rot FCN'
+    # folder = 'RSS_runs'
+    # folder = 'curiosity'
+    # folder = 'curiosity BCE'
+    folder = 'curiosity l2'
+    base = '/home/zxp-s-works/grasp_data/' \
+           + folder
+    # base = '/home/ur5/rosws37/src/eqvar_grasp/real_world_results/' \
+    #        + folder
     plotLearningCurve(base, 1500, filer_pass_word=' ', figname=folder)
-    plotEvalCurve(base, 1500, filer_pass_word=' ', figname=folder)
-    showPerformance(base, filer_pass_word=' ')
+    plotEvalCurve1(base, 1500, filer_pass_word=' ', figname=folder)
+    plotEvalCurve2(base, 1500, filer_pass_word=' ', figname=folder)
+    showPerformance(base, filer_pass_word='dqn')

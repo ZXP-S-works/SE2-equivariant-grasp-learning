@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
-from utils.parameters import action_pixel_range, action_space_size
+from utils.parameters import z_heuristic, action_pixel_range, action_space_size
 
 
 class BaseAgent:
@@ -58,8 +58,17 @@ class BaseAgent:
         """
         gripper_depth = 0.04
         gripper_reach = 0.01
-        patch1 = patch[0, 0, int(3 * self.patch_size / 8): int(5 * self.patch_size / 8),
+        if z_heuristic == 'patch_all' or 'patch_rectangular':
+            patch1 = patch.clone()  # ToDo: double check with getPatch_z in the random_household_clutter_env
+        elif z_heuristic == 'patch_center':
+            patch1 = patch[0, 0, int(3 * self.patch_size / 8): int(5 * self.patch_size / 8),
                                  int(3 * self.patch_size / 8): int(5 * self.patch_size / 8)].clone()
+        # elif z_heuristic == 'patch_rectangular':
+        #     gripper_depth = 0.04
+        #     gripper_reach = 0.01
+        #     safe_z_pos = torch.tensor((patch.max() - gripper_depth, patch.min() + gripper_reach, gripper_reach)).max()
+        else:
+            raise NotImplementedError
         safe_z_pos = torch.tensor((patch1.max() - gripper_depth, patch1.min() + gripper_reach, gripper_reach)).max()
 
         return safe_z_pos

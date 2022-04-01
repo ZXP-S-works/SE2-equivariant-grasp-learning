@@ -1,12 +1,20 @@
 import os
 import time
 import datetime
+import math
+import numpy as np
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 from collections import namedtuple
 from more_itertools import windowed
 import dill as pickle
 import json
 from tqdm import tqdm
+
+import torch
+import torch.nn.functional as F
+
+from utils.torch_utils import rand_perlin_2d, rand_perlin_2d_octaves
 from utils.parameters import *
 
 # Transition object
@@ -64,7 +72,7 @@ class Logger(object):
         self.steps_left = list()
         self.td_errors = list()
         self.expert_samples = list()
-        self.reward_step = list()
+        self.reward_step = list()  # ZXP the reward's corresponding trianing step
         self.SGD_time = list()
         self.eval_rewards = list()
 
@@ -73,7 +81,10 @@ class Logger(object):
 
     def stepBookkeeping(self, rewards, step_lefts, done_masks):
         self.episode_rewards += rewards.squeeze()
-        self.num_episodes += len(rewards)
+        if is_bandit:
+            self.num_episodes += len(rewards)
+        else:
+            self.num_episodes += int(np.sum(done_masks))
         if env_config['reward_type'] == 'dense':
             self.rewards.extend(rewards)
             self.reward_step.extend(self.num_steps + np.arange(1, num_processes + 1)[rewards.astype(bool)])
@@ -123,15 +134,14 @@ class Logger(object):
     def saveLearningCurve(self, n=100):
         ''' Plot the rewards over timesteps and save to logging dir '''
         n = min(n, len(self.rewards))
-        fig = plt.figure()
         plt.plot(np.mean(list(windowed(self.rewards, n)), axis=1))
         if env_config['reward_type'] == 'dense':
             scale = 'tries'
         else:
             scale = 'episodes'
         plt.xlabel(scale)
-        plt.ylabel('reward over ' + str(n) + scale)
-        fig.savefig(os.path.join(self.info_dir, 'learning_curve.pdf'))
+        plt.ylabel('SR over ' + str(n) + scale)
+        plt.savefig(os.path.join(self.info_dir, 'learning_curve.pdf'))
         plt.close()
 
     def saveLearningCurve2(self, n=100):
@@ -144,20 +154,18 @@ class Logger(object):
             scale = 'episodes'
             plt.plot(self.reward_step[n - 1:], np.mean(list(windowed(self.rewards, n)), axis=1))
         plt.xlabel(scale)
-        plt.ylabel('reward over ' + str(n) + scale)
-        fig.savefig(os.path.join(self.info_dir, 'learning_curve2.pdf'))
+        plt.ylabel('SR over ' + str(n) + scale)
+        plt.savefig(os.path.join(self.info_dir, 'learning_curve2.pdf'))
         plt.close()
 
     def saveStepLeftCurve(self, n=100):
         n = min(n, len(self.steps_left))
-        fig = plt.figure()
         plt.plot(np.mean(list(windowed(self.steps_left, n)), axis=1))
-        fig.savefig(os.path.join(self.info_dir, 'steps_left_curve.pdf'))
+        plt.savefig(os.path.join(self.info_dir, 'steps_left_curve.pdf'))
         plt.close()
 
     def saveLossCurve(self, n=100):
         losses = np.array(self.losses)
-        fig = plt.figure()
         if len(losses) < n:
             return
         if len(losses.shape) == 1:
@@ -167,27 +175,25 @@ class Logger(object):
         for loss in losses:
             plt.plot(np.mean(list(windowed(loss, n)), axis=1))
 
-        fig.savefig(os.path.join(self.info_dir, 'loss_curve.pdf'))
+        plt.savefig(os.path.join(self.info_dir, 'loss_curve.pdf'))
         plt.yscale('log')
-        fig.savefig(os.path.join(self.info_dir, 'loss_curve_log.pdf'))
+        plt.savefig(os.path.join(self.info_dir, 'loss_curve_log.pdf'))
 
         plt.close()
 
     def saveTdErrorCurve(self, n=100):
         n = min(n, len(self.td_errors))
-        fig = plt.figure()
         plt.plot(np.mean(list(windowed(self.td_errors, n)), axis=1))
         plt.yscale('log')
-        fig.savefig(os.path.join(self.info_dir, 'td_error_curve.pdf'))
+        plt.savefig(os.path.join(self.info_dir, 'td_error_curve.pdf'))
         plt.close()
 
     def saveEvalCurve(self):
         if eval_freq == 0:
             return
         xs = np.arange(eval_freq, (len(self.eval_rewards) + 1) * eval_freq, eval_freq)
-        fig = plt.figure()
         plt.plot(xs, self.eval_rewards)
-        fig.savefig(os.path.join(self.info_dir, 'eval_curve.pdf'))
+        plt.savefig(os.path.join(self.info_dir, 'eval_curve.pdf'))
         plt.close()
 
     def saveModel(self, steps, name, agent, create_dir=False):
@@ -256,7 +262,7 @@ class Logger(object):
         print('saving buffer')
         torch.save(buffer.getSaveState(), os.path.join(self.checkpoint_dir, 'buffer.pt'))
 
-    def loadBuffer(self, buffer, path, max_n=1000000):
+    def loadBuffer(self, buffer, path, max_n=1000000, perlin_c=0):
         print('loading buffer: ' + path)
         load = torch.load(path)
         if not no_bar:
@@ -267,8 +273,32 @@ class Logger(object):
             if i == max_n:
                 break
             t = load['storage'][i]
-            t = ExpertTransition(t.state, t.obs, t.action, t.reward, t.next_state, t.next_obs, t.done, t.step_left,
-                                 t.expert)
+            if perlin_c > 0:
+                obs_w_perlin = t.obs[0] + (
+                        perlin_c * rand_perlin_2d((128, 128), (int(np.random.choice([1, 2, 4, 8], 1)[0]),
+                                                               int(np.random.choice([1, 2, 4, 8], 1)[
+                                                                       0]))) + perlin_c)
+                in_hand_w_perlin = t.obs[1] + (perlin_c * rand_perlin_2d((24, 24), (int(np.random.choice([1, 2], 1)[0]),
+                                                                                    int(np.random.choice([1, 2], 1)[
+                                                                                            0]))) + perlin_c)
+                n_obs_w_perlin = t.next_obs[0] + (
+                        perlin_c * rand_perlin_2d((128, 128), (int(np.random.choice([1, 2, 4, 8], 1)[0]),
+                                                               int(np.random.choice([1, 2, 4, 8], 1)[
+                                                                       0]))) + perlin_c)
+                n_in_hand_w_perlin = t.next_obs[1] + (
+                        perlin_c * rand_perlin_2d((24, 24), (int(np.random.choice([1, 2], 1)[0]),
+                                                             int(np.random.choice([1, 2], 1)[0]))) + perlin_c)
+                if in_hand_mode == 'proj':
+                    noisy_obs = (obs_w_perlin, t.obs[1])
+                    noisy_next_obs = (n_obs_w_perlin, t.next_obs[1])
+                else:
+                    noisy_obs = (obs_w_perlin, in_hand_w_perlin)
+                    noisy_next_obs = (n_obs_w_perlin, n_in_hand_w_perlin)
+                t = ExpertTransition(t.state, noisy_obs, t.action, t.reward, t.next_state, noisy_next_obs, t.done,
+                                     t.step_left, t.expert)
+            else:
+                t = ExpertTransition(t.state, t.obs, t.action, t.reward, t.next_state, t.next_obs, t.done, t.step_left,
+                                     t.expert)
             buffer.add(t)
 
     def saveCheckPoint(self, args, envs, agent, buffer, save_envs=True):
@@ -348,7 +378,6 @@ class Logger(object):
 
     def saveExpertSampleCurve(self, n=100):
         n = min(n, len(self.expert_samples))
-        fig = plt.figure()
         plt.plot(np.mean(list(windowed(self.expert_samples, n)), axis=1))
-        fig.savefig(os.path.join(self.info_dir, 'expert_sample_curve.pdf'))
+        plt.savefig(os.path.join(self.info_dir, 'expert_sample_curve.pdf'))
         plt.close()
