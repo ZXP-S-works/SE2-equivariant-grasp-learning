@@ -29,14 +29,11 @@ is few enough that we can learn to grasp completely on a physical robot in about
 **Citation**
 
 ```
-@misc{zhu2022sample,
-      title={Sample Efficient Grasp Learning Using Equivariant Models}, 
-      author={Xupeng Zhu and Dian Wang and Ondrej Biza and Guanang Su and Robin Walters and Robert Platt},
-      year={2022},
-      eprint={2202.09468},
-      archivePrefix={arXiv},
-      primaryClass={cs.RO}
-}
+@article{zhu2022grasp,
+  title={Sample Efficient Grasp Learning Using Equivariant Models},
+  author={Zhu, Xupeng and Wang, Dian and Biza, Ondrej and Su, Guanang and Walters, Robin and Platt, Robert},
+  journal={Proceedings of Robotics: Science and Systems (RSS)},
+  year={2022} }
 ```
 
 
