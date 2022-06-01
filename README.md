@@ -79,7 +79,7 @@ You can install the required packages either through `Option1: anaconda` or thro
     conda create -n eqvar_grasp python=3.7
     conda activate eqvar_grasp
     ```
-1. Download the git repository and checkout "with_supervised_learning" branch.
+1. Download the git repository.
     ```
     git clone https://github.com/ZXP-S-works/SE2-equivariant-grasp-learning.git
     cd SE2-equivariant-grasp-learning
@@ -107,7 +107,7 @@ You can install the required packages either through `Option1: anaconda` or thro
 
 ### Option2: pip
 1. Install python3.7
-1. Download the git repository and checkout "with_supervised_learning" branch.
+1. Download the git repository.
     ```
     git clone https://github.com/ZXP-S-works/SE2-equivariant-grasp-learning.git
     cd SE2-equivariant-grasp-learning
