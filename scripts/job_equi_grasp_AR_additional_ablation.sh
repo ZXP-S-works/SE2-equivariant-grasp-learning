@@ -1,7 +1,7 @@
 run()
 {
 jn=${env_abbr}_${date}_${folder}
-script=run_short.sbatch
+script=run.sbatch
 #script=run_short_normal_gpu.sbatch
 #script=run_local_test.sbatch
 
@@ -40,7 +40,7 @@ jid[1]=$(sbatch ${slurm_args} --job-name=${jn1} --export=LOAD_SUB='None' ${scrip
 #done
 }
 
-date=0410
+date=0411
 env_abbr=eqvar_grasp
 
 for runs in 1 2
