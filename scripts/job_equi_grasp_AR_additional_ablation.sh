@@ -39,7 +39,7 @@ jid[1]=$(sbatch ${slurm_args} --job-name=${jn1} --export=LOAD_SUB='None' ${scrip
 #done
 }
 
-date=0411
+date=0412
 env_abbr=eqvar_grasp
 
 for runs in 1 2
@@ -63,7 +63,7 @@ for runs in 1 2
       sample_onpolicydata=True
       onlyfailure=4
       training_iters=1
-      run
+#      run
 
       folder=1_Loss_Func
       alg=dqn_asr
