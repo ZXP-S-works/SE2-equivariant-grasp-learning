@@ -1,3 +1,4 @@
+# On Robot Grasp Learning Using Equivariant Models
 # Sample Efficient Grasp Learning Using Equivariant Models
 
 **Abstract**
@@ -27,7 +28,13 @@ is few enough that we can learn to grasp completely on a physical robot in about
 
 
 **Citation**
-
+```
+@article{zhu2023grasp,
+  title={On Robot Grasp Learning Using Equivariant Models},
+  author={Zhu, Xupeng and Wang, Dian and Su, Guanang and Biza, Ondrej and Walters, Robin and Platt, Robert },
+  journal={Autonomous Robots},
+  year={2023} }
+```
 ```
 @article{zhu2022grasp,
   title={Sample Efficient Grasp Learning Using Equivariant Models},
